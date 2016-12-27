@@ -35,18 +35,16 @@ def get_file_list(path, ignore = []):
 
     return get_file_list_(path, file_type, ignore) if os.path.isdir(path) else [path]
 
-def get_text(content, regex, ignore = []):
-    for text in ignore:
-        content = content.replace(text, '')
+def get_text(content, regex):
+    text = re.findall(regex, str(content), re.S)
+    return sorted(set(text), key=text.index)
 
-    return re.findall(regex, str(content), re.S)
-
-def cammel_to_underline(text, words):
+def camel_to_underline(text, words):
     for word in words:
         word_ = ''
-        is_first = True
+        is_first = False
         for character in word:
-            if character == character.upper():
+            if 'A' <= character <= 'Z':
                 character = character.lower()
                 if is_first:
                     character = '_' + character
@@ -68,9 +66,8 @@ def format_code(path, ignore = []):
             infile = open(file_name, 'r', encoding= 'utf8')
             text = infile.read()
 
-            classes = get_text(text, 'class\s+?(.*?)\s*?\(') # 取类名
-            words = get_text(text, '[a-z][A-Z]+', ignore = classes) #取aA 类型除外
-            text = cammel_to_underline(text, words)
+            words = get_text(text, '\\b(?:[a-z|0-9|_]+[A-Z]+)+') #取aA类单词
+            text = camel_to_underline(text, words)
 
             infile.close()
             bak_file_name = file_name + '_bak'
@@ -108,11 +105,33 @@ def del_file(path, ignore = []):
         finally:
             pass
 
+def roll_back_file(path, ignore = []):
+    files = get_file_list(path, ignore)
+    newfile = ''
+    for file in files:
+        try:
+            if os.path.isfile(file):
+                newfile = file[: file.find('_bak')]
+                os.remove(newfile)
+                os.rename(file, newfile)
+            else:
+                print(file + " 备份文件已删除 无法恢复")
+        except Exception as e:
+           print('''
+                恢复出错: %s
+                Exception : %s
+                '''%(file, str(e))
+             )
+        else:
+            print(newfile + " 恢复成功")
+        finally:
+            pass
+
 def helper():
     '''
-    命令格式：python format path
-    例如：    python format ../spider/*.py  (可以加任意需要格式化的文件 如 *.txt) 不加为默认格式py文件
-    默认：    只格式化.py文件
+    python format.py path     格式化指定目录下的文件 支持*.xxx 默认为*.py
+    python format.py -d path  删除文件  默认删除后缀为_bak的文件
+    python format.py -f path  回滚格式化之前的代码， 前提是没有删除备份
 
     '''
 
@@ -126,9 +145,26 @@ def main():
         print(helper.__doc__)
         return
 
-    if argv == '-h':
+    if argv == '--h':
         print(helper.__doc__)
-        return
+
+    elif argv == '-f':
+        if len(sys.argv) >= 2:
+            path = sys.argv[2]
+            roll_back_file(path + "*_bak")
+        else:
+            print('命令有误, 请输入路径. 如 python format.py -f .')
+
+    elif argv == '-d':
+        if len(sys.argv) >= 2:
+            argv = sys.argv[2]
+            templist = argv.split("*")
+            path = templist[0]
+            file_type = "*" + templist[1] if len(templist) >= 2 else '*_bak'
+            del_file(path + file_type, ignore)
+        else:
+            print('命令有误, 请输入路径. 如 python format.py -d .')
+
     else:
         templist = argv.split("*")
         path = templist[0]
